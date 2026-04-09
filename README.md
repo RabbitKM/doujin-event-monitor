@@ -10,11 +10,11 @@
 
 **1. 每日靜音確認** — 列出所有場次目前狀態，確認腳本正常運作
 
-<img src="docs/screenshots/01_定期通知.png" />
+<img src="docs/screenshots/01_定期通知.png" width="360" />
 
 **2. 報名公告通知** — 偵測到「待公佈」變成有實際日期時發送（非靜音）
 
-<img src="docs/screenshots/02_報名更新通知.png" />
+<img src="docs/screenshots/02_報名更新通知.png" width="360" />
 
 ---
 
