@@ -271,6 +271,9 @@ def main():
 
     print(f"解析結果：{current}")
 
+    # 每日心跳通知（可以把這行註解掉，如果不想每天收到確認訊息）
+    send_discord_heartbeat(current)
+
     for event, info in current.items():
         prev = previous.get(event, {})
 
@@ -286,9 +289,6 @@ def main():
     # 更新 state
     previous.update(current)
     save_state(previous)
-
-    # 每日心跳通知（可以把這行註解掉，如果不想每天收到確認訊息）
-    send_discord_heartbeat(current)
 
     print("完成。")
 
