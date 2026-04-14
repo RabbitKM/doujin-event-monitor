@@ -158,7 +158,7 @@ def send_discord(event_name, reg_start, reg_end="待公佈"):
         "avatar_url": "https://www.f-2.com.tw/wp-content/uploads/2025/03/FF_Logo.png",
         "embeds": [
             {
-                "title": f"🎉 {event_name} 社團報名時間公告了！",
+                "title": f"🎉 開拓動漫祭 · {event_name} 報名時間公告！",
                 "description": (
                     f"**{event_name}** 的社團報名資訊已更新，快去確認！\n\n"
                     f"📅 **報名開始**：{reg_start}\n"
@@ -220,9 +220,9 @@ def send_discord_announcement(title: str, date: str, url: str):
         "avatar_url": "https://www.f-2.com.tw/wp-content/uploads/2025/03/FF_Logo.png",
         "embeds": [
             {
-                "title": f"📣 {title}",
+                "title": "📣 開拓動漫祭 · 社團公告",
                 "description": (
-                    f"官網社團相關公告出現新公告！\n\n"
+                    f"**{title}**\n\n"
                     f"📅 **公告日期**：{date}\n\n"
                     f"[➡️ 查看公告]({url})"
                 ),
@@ -274,7 +274,7 @@ def send_discord_heartbeat(checked_events):
             reg_start = info.get("reg_start", "—")
             reg_end_raw = info.get("reg_end", "—")
             if reg_end_raw != "待公佈" and is_date_passed(reg_end_raw) and not info.get("ended"):
-                reg_end_display = f"⚠️ {reg_end_raw}（報名已截止）"
+                reg_end_display = f"⚠️ **{reg_end_raw}（報名已截止）**"
             else:
                 reg_end_display = reg_end_raw
 
@@ -303,7 +303,7 @@ def send_discord_heartbeat(checked_events):
         "flags": 4096,
         "embeds": [
             {
-                "title": "📋 每日確認：腳本運作中",
+                "title": "📋 開拓動漫祭 · 每日確認",
                 "description": (
                     f"[➡️ 前往官網確認]({TARGET_URL})　"
                     f"[📝 前往報名系統](https://circle.f-2.com.tw/login)"
