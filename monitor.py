@@ -14,7 +14,8 @@ from pathlib import Path
 # ── 設定 ──────────────────────────────────────────────
 DISCORD_WEBHOOK_URL = os.environ.get("FF_DISCORD_WEBHOOK", "")
 
-TARGET_URL = "https://www.f-2.com.tw/%e6%b4%bb%e5%8b%95%e5%a0%b4%e5%9c%b0%e4%ba%a4%e9%80%9a%e8%b3%87%e8%a8%8a/"
+TARGET_URL       = "https://www.f-2.com.tw/%e6%b4%bb%e5%8b%95%e5%a0%b4%e5%9c%b0%e4%ba%a4%e9%80%9a%e8%b3%87%e8%a8%8a/"
+ANNOUNCEMENT_URL = "https://www.f-2.com.tw/%e7%a4%be%e5%9c%98%e7%9b%b8%e9%97%9c%e5%85%ac%e5%91%8a/"
 
 STATE_FILE = Path(__file__).parent / "state.json"
 
@@ -178,6 +179,65 @@ def send_discord(event_name, reg_start, reg_end="待公佈"):
         print(f"[錯誤] Discord 通知失敗：{resp.status_code} {resp.text}")
 
 
+def fetch_announcements(html: str) -> list:
+    """
+    解析社團相關公告頁，回傳含「社團報名開始」的文章列表。
+    每筆格式：{"title": "...", "date": "YYYY-MM-DD", "url": "..."}
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    results = []
+    for div in soup.find_all("div", class_="post-preview"):
+        h2 = div.find("h2", class_="title")
+        if not h2:
+            continue
+        a = h2.find("a", href=True)
+        if not a:
+            continue
+        title = a.get_text(strip=True)
+        if "社團報名開始" not in title:
+            continue
+        url = a["href"]
+        # 日期：div.submitted 內的文字，格式「發表於 YYYY-MM-DD HH:MM」
+        submitted = div.find("div", class_="submitted")
+        date_str = ""
+        if submitted:
+            m = re.search(r'(\d{4}-\d{2}-\d{2})', submitted.get_text())
+            if m:
+                date_str = m.group(1)
+        results.append({"title": title, "date": date_str, "url": url})
+    return results
+
+
+def send_discord_announcement(title: str, date: str, url: str):
+    """📣 公告頁新公告通知（非靜音）"""
+    if not DISCORD_WEBHOOK_URL:
+        print("[警告] 未設定 DISCORD_WEBHOOK_URL，跳過通知")
+        return
+
+    now_str = datetime.now().strftime("%Y/%m/%d %H:%M")
+    payload = {
+        "username": "開拓動漫祭 報名小助手",
+        "avatar_url": "https://www.f-2.com.tw/wp-content/uploads/2025/03/FF_Logo.png",
+        "embeds": [
+            {
+                "title": f"📣 {title}",
+                "description": (
+                    f"官網社團相關公告出現新公告！\n\n"
+                    f"📅 **公告日期**：{date}\n\n"
+                    f"[➡️ 查看公告]({url})"
+                ),
+                "color": 0xE67E22,
+                "footer": {"text": f"偵測時間：{now_str}"},
+            }
+        ],
+    }
+    resp = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+    if resp.status_code in (200, 204):
+        print(f"[OK] 公告通知已發送：{title}")
+    else:
+        print(f"[錯誤] 公告通知失敗：{resp.status_code} {resp.text}")
+
+
 def send_discord_heartbeat(checked_events):
     """每天執行一次，發送「確認運作中」的靜音通知"""
     if not DISCORD_WEBHOOK_URL:
@@ -285,6 +345,21 @@ def main():
         # 第一次執行、還沒有紀錄 → 靜默記錄，不發通知
         elif event not in previous:
             print(f"[首次記錄] {event}：{info['reg_start']}")
+
+    # 偵測公告頁新公告
+    try:
+        ann_resp = requests.get(ANNOUNCEMENT_URL, headers=HEADERS, timeout=15)
+        ann_resp.encoding = "utf-8"
+        new_anns = fetch_announcements(ann_resp.text)
+        seen_urls = previous.get("seen_announcement_urls", [])
+        for ann in new_anns:
+            if ann["url"] not in seen_urls:
+                print(f"[新公告] {ann['title']}（{ann['date']}）")
+                send_discord_announcement(ann["title"], ann["date"], ann["url"])
+                seen_urls.append(ann["url"])
+        previous["seen_announcement_urls"] = seen_urls
+    except Exception as e:
+        print(f"[錯誤] 無法抓取公告頁：{e}")
 
     # 更新 state
     previous.update(current)
