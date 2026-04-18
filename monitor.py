@@ -158,7 +158,7 @@ def send_discord(event_name, reg_start, reg_end="待公佈"):
         "avatar_url": "https://www.f-2.com.tw/wp-content/uploads/2025/03/FF_Logo.png",
         "embeds": [
             {
-                "title": f"🎉 開拓動漫祭 · {event_name} 報名時間公告！",
+                "title": "【年度活動一覽】報名時間有更新！",
                 "description": (
                     f"**{event_name}** 的社團報名資訊已更新，快去確認！\n\n"
                     f"📅 **報名開始**：{reg_start}\n"
@@ -220,10 +220,10 @@ def send_discord_announcement(title: str, date: str, url: str):
         "avatar_url": "https://www.f-2.com.tw/wp-content/uploads/2025/03/FF_Logo.png",
         "embeds": [
             {
-                "title": "📣 開拓動漫祭 · 社團公告",
+                "title": "【社團相關公告】",
                 "description": (
                     f"**{title}**\n\n"
-                    f"📅 **公告日期**：{date}\n\n"
+                    f"📅 **公告日期**：{date.replace('-', '/')}\n\n"
                     f"[➡️ 查看公告]({url})"
                 ),
                 "color": 0xE67E22,
@@ -238,10 +238,12 @@ def send_discord_announcement(title: str, date: str, url: str):
         print(f"[錯誤] 公告通知失敗：{resp.status_code} {resp.text}")
 
 
-def send_discord_heartbeat(checked_events):
-    """每天執行一次，發送「確認運作中」的靜音通知"""
+def send_discord_heartbeat(checked_events, events_with_announcement=None):
+    """每週執行一次，發送「確認運作中」的靜音通知"""
     if not DISCORD_WEBHOOK_URL:
         return
+    if events_with_announcement is None:
+        events_with_announcement = {}
 
     now_str = datetime.now().strftime("%Y/%m/%d %H:%M")
 
@@ -268,8 +270,23 @@ def send_discord_heartbeat(checked_events):
         ended_tag = " ~~已結束~~" if info.get("ended") else ""
 
         if info["status"] == "pending":
-            reg_start = "⏳ 待公佈"
-            reg_end_display = "⏳ 待公佈"
+            if event in events_with_announcement:
+                ann_info = events_with_announcement[event]
+                ann_date = ann_info.get("date", "") if isinstance(ann_info, dict) else ann_info
+                ann_url = ann_info.get("url", "") if isinstance(ann_info, dict) else ""
+                try:
+                    dt = datetime.strptime(ann_date, "%Y-%m-%d")
+                    date_display = f"{dt.month}/{dt.day}"
+                except (ValueError, TypeError):
+                    date_display = ann_date
+                if ann_url:
+                    reg_start = f"[📣 公告已於{date_display}發佈]({ann_url})（活動頁待更新）"
+                else:
+                    reg_start = f"📣 公告已於{date_display}發佈（活動頁待更新）"
+                reg_end_display = reg_start
+            else:
+                reg_start = "⏳ 待公佈"
+                reg_end_display = "⏳ 待公佈"
         else:
             reg_start = info.get("reg_start", "—")
             reg_end_raw = info.get("reg_end", "—")
@@ -303,7 +320,7 @@ def send_discord_heartbeat(checked_events):
         "flags": 4096,
         "embeds": [
             {
-                "title": "📋 開拓動漫祭 · 每日確認",
+                "title": "【年度活動一覽】每週定期回報",
                 "description": (
                     f"[➡️ 前往官網確認]({TARGET_URL})　"
                     f"[📝 前往報名系統](https://circle.f-2.com.tw/login)"
@@ -331,8 +348,10 @@ def main():
 
     print(f"解析結果：{current}")
 
-    # 每日心跳通知（可以把這行註解掉，如果不想每天收到確認訊息）
-    send_discord_heartbeat(current)
+    # 週報心跳通知（每週一發送，確認腳本仍在運作）
+    events_with_ann = previous.get("events_with_announcement", {})
+    if datetime.today().weekday() == 0:  # 0 = 週一
+        send_discord_heartbeat(current, events_with_announcement=events_with_ann)
 
     for event, info in current.items():
         prev = previous.get(event, {})
@@ -352,12 +371,18 @@ def main():
         ann_resp.encoding = "utf-8"
         new_anns = fetch_announcements(ann_resp.text)
         seen_urls = previous.get("seen_announcement_urls", [])
+        events_with_ann = previous.get("events_with_announcement", {})
         for ann in new_anns:
             if ann["url"] not in seen_urls:
                 print(f"[新公告] {ann['title']}（{ann['date']}）")
                 send_discord_announcement(ann["title"], ann["date"], ann["url"])
                 seen_urls.append(ann["url"])
+                # 嘗試從標題提取場次代碼（如 FF47），記錄至 state
+                m = re.search(r'\b([A-Z]{2,3}\d+)\b', ann["title"])
+                if m:
+                    events_with_ann[m.group(1)] = {"date": ann["date"], "url": ann["url"]}
         previous["seen_announcement_urls"] = seen_urls
+        previous["events_with_announcement"] = events_with_ann
     except Exception as e:
         print(f"[錯誤] 無法抓取公告頁：{e}")
 
