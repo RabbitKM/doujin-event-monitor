@@ -179,9 +179,17 @@ def send_discord(event_name, reg_start, reg_end="待公佈"):
         print(f"[錯誤] Discord 通知失敗：{resp.status_code} {resp.text}")
 
 
+# 公告標題用來判斷「開放報名」類型的關鍵字。
+# 官方用詞不固定，實際出現過「社團報名開始」「社團報名即日起開跑嘍」
+# 「社團報名即日起開放報名嘍」等多種寫法，因此改用「報名」＋起始語意字樣共同判斷，
+# 不要只鎖死單一固定字串（否則遇到不同措辭就會像 PF45/RF14 那次一樣完全抓不到）。
+_ANNOUNCEMENT_OPEN_HINTS = ("開始", "開跑", "開放")
+
+
 def fetch_announcements(html: str) -> list:
     """
-    解析社團相關公告頁，回傳含「社團報名開始」的文章列表。
+    解析社團相關公告頁，回傳屬於「開放報名」類型的文章列表。
+    判斷條件：標題含場次代碼（如 FF47、PF45）、含「報名」、且含起始語意字樣。
     每筆格式：{"title": "...", "date": "YYYY-MM-DD", "url": "..."}
     """
     soup = BeautifulSoup(html, "html.parser")
@@ -194,7 +202,9 @@ def fetch_announcements(html: str) -> list:
         if not a:
             continue
         title = a.get_text(strip=True)
-        if "社團報名開始" not in title:
+        if not re.search(r'[A-Z]{2,3}\d+', title):
+            continue
+        if "報名" not in title or not any(kw in title for kw in _ANNOUNCEMENT_OPEN_HINTS):
             continue
         url = a["href"]
         # 日期：div.submitted 內的文字，格式「發表於 YYYY-MM-DD HH:MM」
@@ -291,8 +301,13 @@ def send_discord_heartbeat(checked_events, events_with_announcement=None):
             reg_start = info.get("reg_start", "—")
             reg_end_raw = info.get("reg_end", "—")
             if reg_end_raw != "待公佈" and is_date_passed(reg_end_raw) and not info.get("ended"):
-                reg_end_display = f"⚠️ **{reg_end_raw}（報名已截止）**"
+                # 已截止：恢復一般文字，但保留「已截止」註記
+                reg_end_display = f"{reg_end_raw}（報名已截止）"
+            elif reg_end_raw != "待公佈" and not info.get("ended"):
+                # 報名中（尚未截止）：粗體＋⚠️ 醒目提醒即將截止
+                reg_end_display = f"⚠️ **{reg_end_raw}**"
             else:
+                # 截止日尚未公布、或活動已結束：維持一般文字
                 reg_end_display = reg_end_raw
 
         event_date = info.get("event_date", "")
@@ -377,10 +392,11 @@ def main():
                 print(f"[新公告] {ann['title']}（{ann['date']}）")
                 send_discord_announcement(ann["title"], ann["date"], ann["url"])
                 seen_urls.append(ann["url"])
-                # 嘗試從標題提取場次代碼（如 FF47），記錄至 state
-                m = re.search(r'\b([A-Z]{2,3}\d+)\b', ann["title"])
-                if m:
-                    events_with_ann[m.group(1)] = {"date": ann["date"], "url": ann["url"]}
+                # 嘗試從標題提取場次代碼，記錄至 state
+                # 用 findall 而非 search：標題可能同時提到多個場次（如「【PF45 x RF14】…」），
+                # 只取第一個會漏掉其餘場次的公告記錄
+                for code in re.findall(r'\b([A-Z]{2,3}\d+)\b', ann["title"]):
+                    events_with_ann[code] = {"date": ann["date"], "url": ann["url"]}
         previous["seen_announcement_urls"] = seen_urls
         previous["events_with_announcement"] = events_with_ann
     except Exception as e:
